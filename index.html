@@ -1,1 +1,566 @@
-<!doctype html><html lang="it"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#123c49"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Manutenzioni"><title>🔧 Manutenzioni</title><style>:root{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#19313b;background:#f4f7f7}*{box-sizing:border-box}body{margin:0}header{background:#123c49;color:white;padding:calc(22px + env(safe-area-inset-top)) 18px 24px}h1{margin:0;font-size:26px}header p{margin:6px 0 0;opacity:.85}main{max-width:680px;margin:auto;padding:16px 14px 60px}.panel,.job{background:white;border-radius:17px;padding:16px;margin-bottom:13px;box-shadow:0 2px 12px #123c4910}.panel h2{font-size:18px;margin:0 0 13px}label{display:block;font-size:14px;font-weight:650;margin:12px 0 5px}input{width:100%;font-size:17px;padding:13px;border:1px solid #cbd7db;border-radius:10px}.priority{display:flex;gap:8px}.priority button{flex:1;border:2px solid transparent;background:#f1f3f4;padding:12px 4px;border-radius:12px;font-weight:700;font-size:14px}.priority button[aria-pressed=true]{border-color:#173f4c;background:#e4f2f4}.dot{display:inline-block;width:13px;height:13px;border-radius:50%;margin-right:5px;vertical-align:-1px}.low{background:#2aa66b}.mid{background:#e8b32b}.high{background:#e44d4d}.primary{width:100%;background:#087e8d;color:white;border:0;border-radius:12px;padding:14px;font-size:17px;font-weight:700;margin-top:15px}.tabs{display:flex;gap:8px;margin:18px 0 12px}.tabs button{flex:1;border:0;border-radius:11px;padding:12px;background:#e1e8ea;color:#26424c;font-weight:700}.tabs button.active{background:#123c49;color:white}.job{display:flex;align-items:flex-start;gap:12px;border-left:6px solid #2aa66b}.job.mid-border{border-left-color:#e8b32b}.job.high-border{border-left-color:#e44d4d}.job input[type=checkbox]{width:25px;height:25px;flex:none;margin:3px 0;accent-color:#087e8d}.job .info{flex:1;min-width:0}.job strong{font-size:17px;overflow-wrap:anywhere}.meta{color:#687a80;font-size:13px;margin-top:5px}.controls{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap}.controls select{padding:7px;border:1px solid #cbd7db;border-radius:8px;background:#fff;font-size:14px}.delete{border:0;background:#fbecec;color:#a02b2b;padding:8px;border-radius:8px}.empty{text-align:center;color:#667c83;padding:24px}.foot{font-size:12px;color:#667c83;line-height:1.5;margin-top:20px}.tools{display:flex;gap:8px}.tools button{flex:1;border:1px solid #b8cbd1;border-radius:9px;padding:10px;background:#fff;font-weight:600;color:#23424d}</style></head><body><header><h1>🔧 Manutenzioni</h1><p>Le urgenze crescono automaticamente ogni 5 giorni</p></header><main><section class="panel"><h2>➕ Nuovo intervento</h2><form id="form"><label for="name">Lavoro da fare</label><input id="name" required placeholder="Es. Controllare pompa acqua" maxlength="180"><label for="place">Macchina / reparto (facoltativo)</label><input id="place" placeholder="Es. Reparto confezionamento" maxlength="120"><label>Priorità iniziale</label><div class="priority" id="priority"><button type="button" data-p="0" aria-pressed="true"><i class="dot low"></i>Bassa</button><button type="button" data-p="1" aria-pressed="false"><i class="dot mid"></i>Media</button><button type="button" data-p="2" aria-pressed="false"><i class="dot high"></i>Alta</button></div><button class="primary" type="submit">+ Aggiungi lavoro</button></form></section><div class="tabs"><button id="pendingTab" class="active">Da fare (0)</button><button id="doneTab">Completati (0)</button></div><div id="jobs"></div><section class="panel"><h2>Salva una copia</h2><div class="tools"><button id="export">Esporta backup</button><button id="import">Importa backup</button></div><input id="importFile" type="file" accept="application/json,.json" hidden><p class="foot">I lavori vengono salvati su questo dispositivo e in questo browser. Se cancelli i dati di Safari, potresti perderli: conserva periodicamente una copia di backup. Non vengono inviati a un server.</p></section></main><script>(()=>{'use strict';const KEY='manutenzioni_v2';let items=[];try{const stored=JSON.parse(localStorage.getItem(KEY)||'[]');if(Array.isArray(stored))items=stored.filter(x=>x&&typeof x.name==='string'&&Number.isFinite(x.created));}catch(e){}let priority=0,tab='pending';const $=id=>document.getElementById(id);const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(items));return true}catch(e){alert('Salvataggio non disponibile in questa modalità. Apri l’agenda da Safari tramite un sito web.');return false}};const effective=j=>Math.min(2,Math.max(0,Number(j.base)||0)+Math.floor(Math.max(0,Date.now()-j.created)/432000000));const date=t=>new Date(t).toLocaleDateString('it-IT');function render(){const pending=items.filter(x=>!x.done).sort((a,b)=>effective(b)-effective(a)||a.created-b.created),done=items.filter(x=>x.done).sort((a,b)=>(b.completed||0)-(a.completed||0));$('pendingTab').textContent=`Da fare (${pending.length})`;$('doneTab').textContent=`Completati (${done.length})`;$('pendingTab').classList.toggle('active',tab==='pending');$('doneTab').classList.toggle('active',tab==='done');const target=$('jobs');target.replaceChildren();const show=tab==='pending'?pending:done;if(!show.length){const e=document.createElement('div');e.className='empty';e.textContent=tab==='pending'?'Nessun lavoro da fare 🎉':'Nessun lavoro completato';target.append(e)}show.forEach(j=>{const p=effective(j),names=['Bassa','Media','Alta'],cls=['low','mid','high'];const card=document.createElement('div');card.className='job '+cls[p]+'-border';const cb=document.createElement('input');cb.type='checkbox';cb.checked=!!j.done;cb.setAttribute('aria-label','Segna completato');cb.addEventListener('change',()=>{j.done=cb.checked;j.completed=j.done?Date.now():null;save();render()});const info=document.createElement('div');info.className='info';const title=document.createElement('strong');title.textContent=j.name;const meta=document.createElement('div');meta.className='meta';meta.textContent=(j.place?j.place+' · ':'')+'Inserito il '+date(j.created)+(j.done?' · Completato il '+date(j.completed||Date.now()):'');const controls=document.createElement('div');controls.className='controls';const badge=document.createElement('span');const dot=document.createElement('i');dot.className='dot '+cls[p];badge.append(dot,document.createTextNode(names[p]));controls.append(badge);if(!j.done){const select=document.createElement('select');select.setAttribute('aria-label','Cambia priorità iniziale');names.forEach((n,i)=>{const opt=document.createElement('option');opt.value=String(i);opt.textContent='Imposta '+n;opt.selected=i===j.base;select.append(opt)});select.addEventListener('change',()=>{j.base=Number(select.value);j.created=Date.now();save();render()});controls.append(select)}const del=document.createElement('button');del.className='delete';del.textContent='Elimina';del.addEventListener('click',()=>{if(confirm('Eliminare questo lavoro?')){items=items.filter(x=>x.id!==j.id);save();render()}});controls.append(del);info.append(title,meta,controls);card.append(cb,info);target.append(card)})}document.querySelectorAll('#priority button').forEach(b=>b.addEventListener('click',()=>{priority=Number(b.dataset.p);document.querySelectorAll('#priority button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)))}));$('form').addEventListener('submit',e=>{e.preventDefault();const name=$('name').value.trim();if(!name)return;items.push({id:crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random(),name,place:$('place').value.trim(),base:priority,created:Date.now(),done:false,completed:null});save();$('form').reset();priority=0;document.querySelectorAll('#priority button').forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.p)===0)));tab='pending';render()});$('pendingTab').addEventListener('click',()=>{tab='pending';render()});$('doneTab').addEventListener('click',()=>{tab='done';render()});$('export').addEventListener('click',()=>{const blob=new Blob([JSON.stringify(items,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='backup-manutenzioni-'+new Date().toISOString().slice(0,10)+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),3000)});$('import').addEventListener('click',()=>$('importFile').click());$('importFile').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!Array.isArray(data)||!data.every(x=>x&&typeof x.name==='string'&&Number.isFinite(x.created)&&[0,1,2].includes(x.base)))throw Error();if(confirm('Sostituire la lista attuale con il backup?')){items=data;save();render()}}catch(e){alert('Questo file non è un backup valido.')}e.target.value=''});render();document.addEventListener('visibilitychange',()=>{if(!document.hidden)render()});setInterval(render,60000)})();</script></body></html>
+
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#123c49">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Manutenzioni">
+<title>🔧 Manutenzioni</title>
+<style>
+:root{font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#19313b;background:#f4f7f7}
+*{box-sizing:border-box}
+body{margin:0}
+header{background:#123c49;color:white;padding:calc(22px + env(safe-area-inset-top)) 18px 24px}
+h1{margin:0;font-size:26px}
+header p{margin:6px 0 0;opacity:.85}
+main{max-width:680px;margin:auto;padding:16px 14px 60px}
+.panel,.job{background:white;border-radius:17px;padding:16px;margin-bottom:13px;box-shadow:0 2px 12px #123c4910}
+h2{font-size:18px;margin:0 0 13px}
+label{display:block;font-size:14px;font-weight:650;margin:12px 0 5px}
+input:not([type=checkbox]),select,textarea{width:100%;font:inherit;padding:12px;border:1px solid #cbd7db;border-radius:10px;background:white}
+textarea{min-height:78px;resize:vertical}
+button{cursor:pointer}
+.priority,.tabs,.tools,.controls{display:flex;gap:8px;flex-wrap:wrap}
+.priority button{flex:1;border:2px solid transparent;background:#f1f3f4;padding:12px 4px;border-radius:12px;font-weight:700}
+.priority button[aria-pressed=true]{border-color:#173f4c;background:#e4f2f4}
+.dot{display:inline-block;width:13px;height:13px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+.low{background:#2aa66b}.mid{background:#e8b32b}.high{background:#e44d4d}
+.primary{width:100%;background:#087e8d;color:white;border:0;border-radius:12px;padding:14px;font-size:17px;font-weight:700;margin-top:15px}
+.secondary,.controls button,.tools button{border:1px solid #b8cbd1;border-radius:9px;padding:9px 11px;background:white;font-weight:600;color:#23424d}
+.tabs{margin:18px 0 12px}
+.tabs button{flex:1;border:0;border-radius:11px;padding:12px;background:#e1e8ea;color:#26424c;font-weight:700}
+.tabs button.active{background:#123c49;color:white}
+.job{display:flex;align-items:flex-start;gap:12px;border-left:6px solid #2aa66b}
+.job.mid-border{border-left-color:#e8b32b}
+.job.high-border{border-left-color:#e44d4d}
+.job input[type=checkbox]{width:25px;height:25px;flex:none;margin:3px 0;accent-color:#087e8d}
+.info{flex:1;min-width:0}
+.info strong{font-size:17px;overflow-wrap:anywhere}
+.meta{color:#687a80;font-size:13px;margin-top:5px;line-height:1.5}
+.controls{align-items:center;margin-top:10px}
+.controls select{width:auto;max-width:100%;font-size:14px;padding:7px}
+.controls .delete{background:#fbecec;color:#a02b2b;border:0}
+.empty{text-align:center;color:#667c83;padding:24px}
+.foot{font-size:12px;color:#667c83;line-height:1.5;margin-top:12px}
+.tools button{flex:1}
+.photos{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.photos img{width:90px;height:90px;object-fit:cover;border-radius:10px;border:1px solid #ddd}
+.photoitem{position:relative}
+.photoitem button{display:block;width:100%;font-size:12px;border:0;background:#fbecec;color:#a02b2b;border-radius:6px;margin-top:3px;padding:5px}
+.small{font-size:13px;color:#667c83}
+.categoryrow{display:flex;gap:8px;margin-top:8px}
+.categoryrow input{flex:1;min-width:0}
+.categoryrow button{flex:none}
+.archive-title{font-size:16px;margin:20px 4px 10px;color:#123c49}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<header>
+<h1>🔧 Manutenzioni</h1>
+<p>Le urgenze crescono automaticamente ogni 5 giorni</p>
+</header>
+<main>
+<section class="panel">
+<h2 id="formTitle">➕ Nuovo intervento</h2>
+<form id="form">
+<label for="name">Lavoro da fare</label>
+<textarea id="name" required maxlength="500" placeholder="Es. Controllare pompa acqua"></textarea>
+<label for="place">Macchina / reparto (facoltativo)</label>
+<input id="place" maxlength="120" placeholder="Es. Reparto confezionamento">
+<label for="area">Macroarea</label>
+<select id="area"></select>
+<label>Priorità iniziale</label>
+<div class="priority" id="priority">
+<button type="button" data-p="0" aria-pressed="true"><i class="dot low"></i>Bassa</button>
+<button type="button" data-p="1" aria-pressed="false"><i class="dot mid"></i>Media</button>
+<button type="button" data-p="2" aria-pressed="false"><i class="dot high"></i>Alta</button>
+</div>
+<label for="photoInput">Fotografie (massimo 3 per intervento)</label>
+<input id="photoInput" type="file" accept="image/*" multiple>
+<div id="photoPreview" class="photos"></div>
+<p class="small">Le foto vengono ridotte per occupare meno memoria.</p>
+<button class="primary" id="submitBtn" type="submit">+ Aggiungi lavoro</button>
+<button class="secondary hidden" id="cancelEdit" type="button" style="width:100%;margin-top:8px">Annulla modifica</button>
+</form>
+</section>
+
+<section class="panel">
+<h2>🗂️ Gestisci macroaree</h2>
+<p class="small">Crea le categorie che preferisci. Potrai cambiarle in seguito.</p>
+<div class="categoryrow">
+<input id="newArea" maxlength="60" placeholder="Es. Produzione, Esterni, Magazzino">
+<button class="secondary" id="addArea" type="button">Aggiungi</button>
+</div>
+<div id="areaList"></div>
+</section>
+
+<div class="tabs">
+<button id="pendingTab" class="active">Da fare (0)</button>
+<button id="doneTab">Completati (0)</button>
+</div>
+<div id="jobs"></div>
+
+<section class="panel">
+<h2>💾 Salva una copia</h2>
+<div class="tools">
+<button id="export" type="button">Esporta backup</button>
+<button id="import" type="button">Importa backup</button>
+</div>
+<input id="importFile" type="file" accept="application/json,.json" hidden>
+<p class="foot">I lavori e le foto sono salvati in questo browser, non su un server. Conserva periodicamente un backup JSON. Le foto possono esaurire lo spazio disponibile: non usare l'agenda come unica copia delle immagini importanti.</p>
+</section>
+</main>
+
+<script>
+(()=>{
+'use strict';
+
+const KEY='manutenzioni_v2';
+const AREAKEY='manutenzioni_aree_v1';
+const $=id=>document.getElementById(id);
+let items=[];
+let areas=[];
+let priority=0;
+let tab='pending';
+let editing=null;
+let draftPhotos=[];
+
+try{
+ const data=JSON.parse(localStorage.getItem(KEY)||'[]');
+ if(Array.isArray(data))items=data.filter(x=>x&&typeof x.name==='string'&&Number.isFinite(x.created));
+}catch(e){}
+
+try{
+ const data=JSON.parse(localStorage.getItem(AREAKEY)||'[]');
+ if(Array.isArray(data))areas=data.filter(x=>typeof x==='string');
+}catch(e){}
+
+function save(){
+ try{
+  localStorage.setItem(KEY,JSON.stringify(items));
+  localStorage.setItem(AREAKEY,JSON.stringify(areas));
+  return true;
+ }catch(e){
+  alert('Memoria del browser piena o non disponibile. Prova a rimuovere alcune fotografie, poi salva nuovamente.');
+  return false;
+ }
+}
+
+function update(change){
+ const oldItems=JSON.stringify(items);
+ const oldAreas=JSON.stringify(areas);
+ change();
+ if(!save()){
+  items=JSON.parse(oldItems);
+  areas=JSON.parse(oldAreas);
+  try{
+   localStorage.setItem(KEY,oldItems);
+   localStorage.setItem(AREAKEY,oldAreas);
+  }catch(e){}
+  return false;
+ }
+ render();
+ return true;
+}
+
+const effective=j=>Math.min(2,Math.max(0,Number(j.base)||0)+Math.floor(Math.max(0,Date.now()-j.created)/432000000));
+const date=t=>new Date(t).toLocaleDateString('it-IT');
+const uid=()=>typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random();
+
+function setPriority(p){
+ priority=p;
+ document.querySelectorAll('#priority button').forEach(b=>{
+  b.setAttribute('aria-pressed',String(Number(b.dataset.p)===p));
+ });
+}
+
+function fillAreas(){
+ const current=$('area').value;
+ $('area').replaceChildren();
+ const blank=document.createElement('option');
+ blank.value='';
+ blank.textContent='Senza macroarea';
+ $('area').append(blank);
+ areas.forEach(a=>{
+  const opt=document.createElement('option');
+  opt.value=a;
+  opt.textContent=a;
+  $('area').append(opt);
+ });
+ $('area').value=areas.includes(current)?current:'';
+}
+
+function renderAreas(){
+ fillAreas();
+ const list=$('areaList');
+ list.replaceChildren();
+ areas.forEach(a=>{
+  const row=document.createElement('div');
+  row.className='categoryrow';
+  const name=document.createElement('input');
+  name.value=a;
+  name.setAttribute('aria-label','Nome macroarea');
+  const rename=document.createElement('button');
+  rename.className='secondary';
+  rename.textContent='Rinomina';
+  rename.onclick=()=>{
+   const value=name.value.trim();
+   if(!value||value===a)return;
+   if(areas.includes(value)){alert('Questa macroarea esiste già.');return}
+   if(update(()=>{
+    areas=areas.map(x=>x===a?value:x);
+    items.forEach(j=>{if(j.area===a)j.area=value});
+   }))renderAreas();
+  };
+  const del=document.createElement('button');
+  del.className='secondary';
+  del.textContent='Elimina';
+  del.onclick=()=>{
+   if(confirm('Eliminare la macroarea? I lavori resteranno salvati senza categoria.')){
+    if(update(()=>{
+     areas=areas.filter(x=>x!==a);
+     items.forEach(j=>{if(j.area===a)j.area=''});
+    }))renderAreas();
+   }
+  };
+  row.append(name,rename,del);
+  list.append(row);
+ });
+}
+
+function photoElement(src,removable,onRemove){
+ const wrap=document.createElement('div');
+ wrap.className='photoitem';
+ const img=document.createElement('img');
+ img.src=src;
+ img.alt='Fotografia intervento';
+ img.onclick=()=>window.open(src,'_blank');
+ wrap.append(img);
+ if(removable){
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.textContent='Rimuovi';
+  btn.onclick=onRemove;
+  wrap.append(btn);
+ }
+ return wrap;
+}
+
+function showDraftPhotos(){
+ const target=$('photoPreview');
+ target.replaceChildren();
+ draftPhotos.forEach((src,i)=>{
+  target.append(photoElement(src,true,()=>{
+   draftPhotos.splice(i,1);
+   showDraftPhotos();
+  }));
+ });
+}
+
+function render(){
+ const pending=items.filter(x=>!x.done).sort((a,b)=>effective(b)-effective(a)||a.created-b.created);
+ const done=items.filter(x=>x.done).sort((a,b)=>(b.completed||0)-(a.completed||0));
+ $('pendingTab').textContent=`Da fare (${pending.length})`;
+ $('doneTab').textContent=`Completati (${done.length})`;
+ $('pendingTab').classList.toggle('active',tab==='pending');
+ $('doneTab').classList.toggle('active',tab==='done');
+ const target=$('jobs');
+ target.replaceChildren();
+ const shown=tab==='pending'?pending:done;
+
+ if(!shown.length){
+  const empty=document.createElement('div');
+  empty.className='empty';
+  empty.textContent=tab==='pending'?'Nessun lavoro da fare 🎉':'Nessun lavoro completato';
+  target.append(empty);
+  return;
+ }
+
+ const groups=tab==='done'
+  ? [...new Set(shown.map(j=>j.area||'Senza macroarea'))]
+  : [null];
+
+ groups.forEach(group=>{
+  if(group!==null){
+   const heading=document.createElement('h3');
+   heading.className='archive-title';
+   heading.textContent='📁 '+group;
+   target.append(heading);
+  }
+
+  shown.filter(j=>group===null||(j.area||'Senza macroarea')===group).forEach(j=>{
+   const p=effective(j);
+   const names=['Bassa','Media','Alta'];
+   const cls=['low','mid','high'];
+
+   const card=document.createElement('div');
+   card.className='job '+cls[p]+'-border';
+
+   const cb=document.createElement('input');
+   cb.type='checkbox';
+   cb.checked=!!j.done;
+   cb.setAttribute('aria-label','Segna completato');
+   cb.onchange=()=>{
+    update(()=>{
+     j.done=cb.checked;
+     j.completed=j.done?Date.now():null;
+    });
+   };
+
+   const info=document.createElement('div');
+   info.className='info';
+   const title=document.createElement('strong');
+   title.textContent=j.name;
+   const meta=document.createElement('div');
+   meta.className='meta';
+   meta.textContent=(j.place?j.place+' · ':'')+
+    (j.area?'📁 '+j.area+' · ':'')+
+    'Inserito il '+date(j.created)+
+    (j.done?' · Completato il '+date(j.completed||Date.now()):'');
+
+   const controls=document.createElement('div');
+   controls.className='controls';
+   const badge=document.createElement('span');
+   const dot=document.createElement('i');
+   dot.className='dot '+cls[p];
+   badge.append(dot,document.createTextNode(names[p]));
+   controls.append(badge);
+
+   if(!j.done){
+    const select=document.createElement('select');
+    select.setAttribute('aria-label','Cambia priorità iniziale');
+    names.forEach((n,i)=>{
+     const opt=document.createElement('option');
+     opt.value=String(i);
+     opt.textContent='Imposta '+n;
+     opt.selected=i===Number(j.base);
+     select.append(opt);
+    });
+    select.onchange=()=>{
+     update(()=>{
+      j.base=Number(select.value);
+      j.created=Date.now();
+     });
+    };
+    controls.append(select);
+   }
+
+   const edit=document.createElement('button');
+   edit.textContent='✏️ Modifica';
+   edit.onclick=()=>startEdit(j);
+   controls.append(edit);
+
+   const del=document.createElement('button');
+   del.className='delete';
+   del.textContent='Elimina';
+   del.onclick=()=>{
+    if(confirm('Eliminare definitivamente questo lavoro?')){
+     update(()=>{items=items.filter(x=>x!==j)});
+    }
+   };
+   controls.append(del);
+
+   info.append(title,meta);
+
+   if(Array.isArray(j.photos)&&j.photos.length){
+    const photos=document.createElement('div');
+    photos.className='photos';
+    j.photos.forEach(src=>photos.append(photoElement(src,false)));
+    info.append(photos);
+   }
+
+   info.append(controls);
+   card.append(cb,info);
+   target.append(card);
+  });
+ });
+}
+
+function startEdit(j){
+ editing=j.id;
+ $('formTitle').textContent='✏️ Modifica intervento';
+ $('submitBtn').textContent='Salva modifiche';
+ $('cancelEdit').classList.remove('hidden');
+ $('name').value=j.name;
+ $('place').value=j.place||'';
+ fillAreas();
+ if(j.area&&!areas.includes(j.area)){
+  areas.push(j.area);
+  renderAreas();
+ }
+ $('area').value=j.area||'';
+ setPriority(Number(j.base)||0);
+ draftPhotos=Array.isArray(j.photos)?[...j.photos]:[];
+ showDraftPhotos();
+ window.scrollTo({top:0,behavior:'smooth'});
+}
+
+function resetForm(){
+ editing=null;
+ $('form').reset();
+ $('formTitle').textContent='➕ Nuovo intervento';
+ $('submitBtn').textContent='+ Aggiungi lavoro';
+ $('cancelEdit').classList.add('hidden');
+ draftPhotos=[];
+ showDraftPhotos();
+ setPriority(0);
+ fillAreas();
+}
+
+function resizePhoto(file){
+ return new Promise((resolve,reject)=>{
+  const reader=new FileReader();
+  reader.onerror=()=>reject(Error('Lettura foto non riuscita'));
+  reader.onload=()=>{
+   const img=new Image();
+   img.onerror=()=>reject(Error('Immagine non valida'));
+   img.onload=()=>{
+    const scale=Math.min(1,900/Math.max(img.width,img.height));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(img.width*scale));
+    canvas.height=Math.max(1,Math.round(img.height*scale));
+    canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+    resolve(canvas.toDataURL('image/jpeg',0.65));
+   };
+   img.src=reader.result;
+  };
+  reader.readAsDataURL(file);
+ });
+}
+
+document.querySelectorAll('#priority button').forEach(b=>{
+ b.onclick=()=>setPriority(Number(b.dataset.p));
+});
+
+$('photoInput').onchange=async e=>{
+ const files=[...e.target.files];
+ if(draftPhotos.length+files.length>3){
+  alert('Puoi allegare al massimo 3 fotografie per intervento.');
+  e.target.value='';
+  return;
+ }
+ try{
+  for(const file of files){
+   if(!file.type.startsWith('image/'))throw Error('Seleziona solo fotografie.');
+   draftPhotos.push(await resizePhoto(file));
+  }
+  showDraftPhotos();
+ }catch(err){
+  alert('Impossibile leggere una fotografia: '+err.message);
+ }
+ e.target.value='';
+};
+
+$('form').onsubmit=e=>{
+ e.preventDefault();
+ const name=$('name').value.trim();
+ if(!name)return;
+ const place=$('place').value.trim();
+ const area=$('area').value;
+ const photos=[...draftPhotos];
+ const base=priority;
+
+ const ok=update(()=>{
+  if(editing){
+   const j=items.find(x=>x.id===editing);
+   if(!j)throw Error('Intervento non trovato');
+   j.name=name;
+   j.place=place;
+   j.area=area;
+   j.base=base;
+   j.photos=photos;
+  }else{
+   items.push({
+    id:uid(),name,place,area,base,
+    created:Date.now(),done:false,completed:null,photos
+   });
+  }
+ });
+ if(ok){
+  resetForm();
+  tab='pending';
+  render();
+ }
+};
+
+$('cancelEdit').onclick=resetForm;
+
+$('addArea').onclick=()=>{
+ const value=$('newArea').value.trim();
+ if(!value)return;
+ if(areas.includes(value)){
+  alert('Questa macroarea esiste già.');
+  return;
+ }
+ if(update(()=>areas.push(value))){
+  $('newArea').value='';
+  renderAreas();
+  $('area').value=value;
+ }
+};
+
+$('pendingTab').onclick=()=>{tab='pending';render()};
+$('doneTab').onclick=()=>{tab='done';render()};
+
+$('export').onclick=()=>{
+ const data={version:3,items,areas};
+ const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+ const url=URL.createObjectURL(blob);
+ const a=document.createElement('a');
+ a.href=url;
+ a.download='backup-manutenzioni-'+new Date().toISOString().slice(0,10)+'.json';
+ document.body.append(a);
+ a.click();
+ a.remove();
+ setTimeout(()=>URL.revokeObjectURL(url),3000);
+};
+
+$('import').onclick=()=>$('importFile').click();
+
+$('importFile').onchange=async e=>{
+ const file=e.target.files[0];
+ if(!file)return;
+ try{
+  const data=JSON.parse(await file.text());
+  const incoming=Array.isArray(data)?data:data.items;
+  const incomingAreas=Array.isArray(data)?[]:data.areas||[];
+  if(!Array.isArray(incoming)||
+   !incoming.every(x=>x&&typeof x.name==='string'&&
+    Number.isFinite(x.created)&&[0,1,2].includes(Number(x.base)))||
+   !Array.isArray(incomingAreas)){
+   throw Error('Formato non valido');
+  }
+  if(confirm('Sostituire tutti i lavori attuali con quelli del backup?')){
+   const ok=update(()=>{
+    items=incoming;
+    areas=[...new Set([
+     ...incomingAreas.filter(x=>typeof x==='string'),
+     ...incoming.map(x=>x.area).filter(x=>typeof x==='string'&&x)
+    ])];
+   });
+   if(ok){
+    resetForm();
+    renderAreas();
+    alert('Backup importato correttamente.');
+   }
+  }
+ }catch(err){
+  alert('Questo file non è un backup valido.');
+ }
+ e.target.value='';
+};
+
+items.forEach(j=>{
+ if(j.area&&typeof j.area==='string'&&!areas.includes(j.area))areas.push(j.area);
+});
+renderAreas();
+render();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)render()});
+setInterval(render,60000);
+})();
+</script>
+</body>
+</html>
